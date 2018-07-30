@@ -60,28 +60,32 @@ class zeta_server {
                         swoole_log('error,$hexstr = ' . $hexstr);
                         return;
                     }
-                    $res['time'] = $payload['apTime']; //时间戳
-                    $task1       = [
+                    $time  = time();
+                    $task1 = [
+                        'time'        => $time,
                         'task_name'   => 'task_thres_check',
                         'task_params' => [
                             $res['sn'],
                             $res['metric_data']
                         ]
                     ];
-                    $task2       = [
+                    $task2 = [
+                        'time'        => $time,
                         'task_name'   => 'task_insert_metric_data',
                         'task_params' => [
                             $res['sn'],
                             $res['metric_data'],
                         ]
                     ];
-                    $task3       = [
+                    $task3 = [
+                        'time'        => $time,
                         'task_name'   => 'task_update_device',
                         'task_params' => [
                             $res['sn'],
                             [
-                                'charge' => $res['charge'],
-                                'power'  => $res['power'],
+                                'charge'      => $res['charge'],
+                                'power'       => $res['power'],
+                                'last_active' => $time,
                             ]
                         ]
                     ];
@@ -115,7 +119,7 @@ class zeta_server {
     public function task($serv, $task_id, $src_worker_id, $task_data) {
 
         //设置服务器时间
-        $this->_curr_time  = time();
+        $this->_curr_time  = $task_data['time'];
         $this->_curr_year  = date('Y', $this->_curr_time);
         $this->_curr_month = date('n', $this->_curr_time); //月份没有前导0
         $this->_curr_day   = date('j', $this->_curr_time); //第几天，没有前导0
@@ -253,7 +257,7 @@ class zeta_server {
                         'val_level' => $level,              //报警类型 1 低于 2 高于
                         're_name'   => !empty($device_info['region_name']) ? $device_info['region_name'] : '-',     //区域名称
                         'pn_name'   => !empty($device_info['pond_name']) ? $device_info['pond_name'] : '-',          //池塘名称
-                    ]),
+                    ], JSON_UNESCAPED_UNICODE),
                     'ctime'     => $this->_curr_time,
                 ];
             } elseif (!in_array($row['metric_id'], $alarm_metric) && $alarm_status) {
@@ -272,7 +276,7 @@ class zeta_server {
                         'val_level' => '0', //报警类型 1 低于 2 高于 0 正常
                         're_name'   => !empty($device_info['region_name']) ? $device_info['region_name'] : '-',     //区域名称
                         'pn_name'   => !empty($device_info['pond_name']) ? $device_info['pond_name'] : '-',          //池塘名称
-                    ]),
+                    ], JSON_UNESCAPED_UNICODE),
                     'ctime'     => $this->_curr_time,
                 ];
             }
@@ -282,12 +286,13 @@ class zeta_server {
         }
         if ($alarm_msg) { //db 保存报警消息
             $this->db_insert($alarm_msg, 't_message_alarm');
+            var_dump($device_info);
             $to_push = [
                 'base_id'     => $device_info['base_id'],
                 'msg_type'    => '1',
                 'msg_content' => '有新的报警信息！'
             ];
-            curl('127.0.0.1:9528', $to_push); //websocket 推送
+            $res     = curl('127.0.0.1:9528', json_encode($to_push)); //websocket 推送,推送json
             //TODO 推送APP
         }
     }
@@ -439,7 +444,7 @@ class zeta_server {
             foreach ($data as $row) {
                 $vals = '';
                 foreach ($row as $value) {
-                    $vals .= '"' . $value . '",';
+                    $vals .= "'" . $value . "',";
                 }
                 $vals = '(' . trim($vals, ',') . ')';
                 $rows .= $vals . ',';
@@ -451,7 +456,7 @@ class zeta_server {
             $vals  = '';
             foreach ($data as $key => $val) {
                 $field .= '`' . $key . '`,';
-                $vals  .= '"' . $val . '",';
+                $vals  .= "'" . $val . "',";
             }
             $field = '(' . trim($field, ',') . ')';
             $vals  = '(' . trim($vals, ',') . ')';
